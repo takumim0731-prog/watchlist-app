@@ -1,5 +1,54 @@
 import { useState, useEffect } from "react";
 
+const SUPABASE_URL = "https://cxcmzyrjjnxelbeevztg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4Y216eXJqam54ZWxiZWV2enRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODEyMjQsImV4cCI6MjA5MzQ1NzIyNH0.nMOhmY5omrsh2lx6uJYfuFGtOBuGnwiZNT-LbnXERq8";
+
+async function fetchMemos() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/memos?order=created_at.desc`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+  return res.json();
+}
+
+async function insertMemo(memo) {
+  await fetch(`${SUPABASE_URL}/rest/v1/memos`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(memo),
+  });
+}
+
+async function updateMemo(id, memo) {
+  await fetch(`${SUPABASE_URL}/rest/v1/memos?id=eq.${id}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(memo),
+  });
+}
+
+async function deleteMemo(id) {
+  await fetch(`${SUPABASE_URL}/rest/v1/memos?id=eq.${id}`, {
+    method: "DELETE",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+}
+
 const CATEGORIES = [
   { id: "movie", label: "映画", icon: "🎬", color: "#E85D04" },
   { id: "manga", label: "漫画", icon: "📖", color: "#7B2FBE" },
@@ -16,22 +65,9 @@ const PRIORITIES = [
   { id: "done", label: "視聴済", color: "#2D6A4F" },
 ];
 
-const STORAGE_KEY = "watchlist-memos";
-
-function loadMemos() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch (e) {}
-  return [
-    { id: 1, title: "デューン 砂の惑星", category: "movie", priority: "high", note: "Part 2も見たい", createdAt: Date.now() - 86400000 },
-    { id: 2, title: "チェンソーマン", category: "manga", priority: "medium", note: "", createdAt: Date.now() - 172800000 },
-    { id: 3, title: "オッペンハイマー", category: "movie", priority: "done", note: "感動した", createdAt: Date.now() - 259200000 },
-  ];
-}
-
 export default function App() {
-  const [memos, setMemos] = useState(loadMemos);
+  const [memos, setMemos] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -39,8 +75,15 @@ export default function App() {
   const [form, setForm] = useState({ title: "", category: "movie", priority: "high", note: "" });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(memos));
-  }, [memos]);
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    const data = await fetchMemos();
+    setMemos(Array.isArray(data) ? data : []);
+    setLoading(false);
+  }
 
   const filtered = memos.filter(m => {
     const matchCat = filter === "all" || m.category === filter;
@@ -60,18 +103,20 @@ export default function App() {
     setShowForm(true);
   }
 
-  function save() {
+  async function save() {
     if (!form.title.trim()) return;
     if (editId) {
-      setMemos(memos.map(m => m.id === editId ? { ...m, ...form } : m));
+      await updateMemo(editId, form);
     } else {
-      setMemos([{ id: Date.now(), ...form, createdAt: Date.now() }, ...memos]);
+      await insertMemo({ ...form, created_at: new Date().toISOString() });
     }
     setShowForm(false);
+    load();
   }
 
-  function remove(id) {
-    setMemos(memos.filter(m => m.id !== id));
+  async function remove(id) {
+    await deleteMemo(id);
+    load();
   }
 
   const cat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
@@ -118,9 +163,11 @@ export default function App() {
           </button>
         ))}
       </div>
-      <div style={styles.count}>{filtered.length} 件</div>
+      <div style={styles.count}>
+        {loading ? "読み込み中..." : `${filtered.length} 件`}
+      </div>
       <div style={styles.list}>
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <div style={styles.empty}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🎬</div>
             <div style={{ color: "#666", fontSize: 14 }}>メモがありません</div>
@@ -150,7 +197,7 @@ export default function App() {
                 <div style={styles.cardTitle}>{memo.title}</div>
                 {memo.note && <div style={styles.cardNote}>{memo.note}</div>}
                 <div style={styles.cardDate}>
-                  {new Date(memo.createdAt).toLocaleDateString("ja-JP")}
+                  {new Date(memo.created_at).toLocaleDateString("ja-JP")}
                 </div>
               </div>
             </div>
